@@ -9,7 +9,7 @@
   <link rel="icon" href="./icon.svg" type="image/svg+xml">
   <title>My Streak Calendar</title>
   <style>
-    :root { color-scheme: light; --bg:#f7f7f4; --card:#fff; --ink:#22251f; --muted:#74796f; --line:#e7e8e1; --done:#d5ead8; --done-ink:#205c34; --today:#e8edf9; --today-line:#647bb5; }
+    :root { color-scheme: light; --bg:#f7f7f4; --card:#fff; --ink:#22251f; --muted:#74796f; --line:#e7e8e1; --done:#d5ead8; --done-ink:#205c34; --failed:#f6d8d8; --failed-ink:#9b2525; --today:#e8edf9; --today-line:#647bb5; }
     * { box-sizing:border-box; }
     body { margin:0; background:var(--bg); color:var(--ink); font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
     main { max-width:980px; margin:0 auto; padding: max(24px, env(safe-area-inset-top)) 16px max(32px, env(safe-area-inset-bottom)); }
@@ -24,7 +24,7 @@
     .stat strong { display:block; font-size:1.4rem; letter-spacing:-.03em; }
     .stat span { color:var(--muted); font-size:.8rem; }
     .legend { margin-left:auto; color:var(--muted); font-size:.8rem; display:flex; align-items:center; gap:7px; }
-    .legend-dot { width:13px; height:13px; border-radius:4px; background:var(--done); border:1px solid #c4dfc9; }
+    .legend-dot { width:13px; height:13px; border-radius:4px; background:var(--done); border:1px solid #c4dfc9; }\n    .legend-dot.failed { background:var(--failed); border-color:#edbcbc; }
     .year-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
     .month { background:var(--card); border:1px solid var(--line); border-radius:16px; padding:14px 12px 12px; min-width:0; }
     .month h2 { margin:0 0 12px; font-size:.96rem; font-weight:700; }
@@ -33,7 +33,7 @@
     .day { min-width:0; aspect-ratio:1; padding:0; border:1px solid transparent; border-radius:7px; background:transparent; color:var(--ink); font-size:clamp(.65rem,1.6vw,.82rem); display:flex; align-items:center; justify-content:center; position:relative; }
     .day:disabled { cursor:default; color:#b8bbb3; }
     .day.done { background:var(--done); color:var(--done-ink); font-weight:700; }
-    .day.done::after { content:"✓"; font-size:.68em; position:absolute; right:1px; top:-2px; }
+    .day.done::after { content:"✓"; font-size:.68em; position:absolute; right:1px; top:-2px; }\n    .day.failed { background:var(--failed); color:var(--failed-ink); font-weight:700; }\n    .day.failed::after { content:"×"; font-size:.9em; position:absolute; right:1px; top:-3px; }
     .day.today { border-color:var(--today-line); background:var(--today); }
     .day.today.done { background:var(--done); border-color:var(--today-line); }
     .day:focus-visible,.nav:focus-visible,.action:focus-visible { outline:3px solid #647bb5; outline-offset:2px; }
@@ -60,11 +60,11 @@
   <section class="summary" aria-label="Progress summary">
     <div class="stat"><strong id="totalDone">0</strong><span>days checked this year</span></div>
     <div class="stat"><strong id="currentStreak">0</strong><span>day current streak</span></div>
-    <div class="legend"><span class="legend-dot"></span> Completed day</div>
+    <div class="legend"><span class="legend-dot"></span> Completed <span class="legend-dot failed"></span> Failed</div>
   </section>
   <section id="calendar" class="year-grid" aria-label="Yearly calendar"></section>
   <div class="footer">
-    <span>Tap any date to check or uncheck it.</span>
+    <span>Tap a date to cycle: blank → ✓ completed → × failed → blank.</span>
     <button class="action" id="exportBtn">Export backup</button>
     <button class="action" id="importBtn">Import backup</button>
     <input type="file" id="importFile" accept="application/json,.json" hidden>
@@ -73,10 +73,10 @@
 </main>
 <script>
 (() => {
-  const STORAGE_KEY = "personal-streak-calendar-v1";
+  const STORAGE_KEY = "personal-streak-calendar-v1";\n  const FAILED_STORAGE_KEY = "personal-streak-calendar-failed-v1";
   const today = new Date();
   let shownYear = today.getFullYear();
-  let checked = load();
+  let checked = load(STORAGE_KEY);\n  let failed = load(FAILED_STORAGE_KEY);
   const calendar = document.getElementById("calendar");
   const yearLabel = document.getElementById("yearLabel");
   const totalDone = document.getElementById("totalDone");
@@ -85,15 +85,15 @@
   const weekdays = ["M","T","W","T","F","S","S"];
   const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
-  function load() {
+  function load(storageKey) {
     try {
-      const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
+      const data = JSON.parse(localStorage.getItem(storageKey) || "[]");
       return new Set(Array.isArray(data) ? data.filter(x => typeof x === "string") : []);
     } catch { return new Set(); }
   }
   function save() {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify([...checked]));
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([...checked]));\n      localStorage.setItem(FAILED_STORAGE_KEY, JSON.stringify([...failed]));
       notice.textContent = "Saved on this device.";
     } catch {
       notice.textContent = "Could not save in this browser. Export a backup to keep your records.";
@@ -152,19 +152,17 @@
         const btn = document.createElement("button");
         btn.className = "day";
         btn.textContent = d;
-        btn.setAttribute("aria-label", `${monthNames[m]} ${d}, ${shownYear}${checked.has(dateKey) ? ", completed" : ", not completed"}`);
-        btn.setAttribute("aria-pressed", checked.has(dateKey) ? "true" : "false");
+        const state = checked.has(dateKey) ? "completed" : failed.has(dateKey) ? "failed" : "not marked";\n        btn.setAttribute("aria-label", `${monthNames[m]} ${d}, ${shownYear}, ${state}`);\n        btn.setAttribute("aria-pressed", state !== "not marked" ? "true" : "false");
         const isToday = shownYear===today.getFullYear() && m===today.getMonth() && d===today.getDate();
         if (isToday) btn.classList.add("today");
-        if (checked.has(dateKey)) btn.classList.add("done");
+        if (checked.has(dateKey)) btn.classList.add("done");\n        if (failed.has(dateKey)) btn.classList.add("failed");
         const dateObj = new Date(shownYear,m,d);
         if (dateObj > new Date(today.getFullYear(),today.getMonth(),today.getDate())) {
           btn.disabled = true;
           btn.title = "Future date";
         } else {
           btn.addEventListener("click", () => {
-            if (checked.has(dateKey)) checked.delete(dateKey);
-            else checked.add(dateKey);
+            if (checked.has(dateKey)) { checked.delete(dateKey); failed.add(dateKey); }\n            else if (failed.has(dateKey)) { failed.delete(dateKey); }\n            else { checked.add(dateKey); }
             save();
             render();
           });
@@ -178,7 +176,7 @@
   document.getElementById("prevYear").addEventListener("click", () => { shownYear--; render(); });
   document.getElementById("nextYear").addEventListener("click", () => { if (shownYear < today.getFullYear()) { shownYear++; render(); } });
   document.getElementById("exportBtn").addEventListener("click", () => {
-    const blob = new Blob([JSON.stringify({app:"personal-streak-calendar",version:1,checked:[...checked]},null,2)], {type:"application/json"});
+    const blob = new Blob([JSON.stringify({app:"personal-streak-calendar",version:2,checked:[...checked],failed:[...failed]},null,2)], {type:"application/json"});
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href=url; a.download="streak-calendar-backup.json"; a.click();
     URL.revokeObjectURL(url); notice.textContent = "Backup exported.";
@@ -188,11 +186,7 @@
     const file=e.target.files[0]; if (!file) return;
     try {
       const data=JSON.parse(await file.text());
-      const values=Array.isArray(data) ? data : data.checked;
-      if (!Array.isArray(values) || !values.every(x => typeof x==="string" && /^\d{4}-\d{2}-\d{2}$/.test(x))) throw new Error("Invalid backup");
-      if (confirm("Importing will replace the checkmarks currently saved in this browser. Continue?")) {
-        checked=new Set(values); save(); render(); notice.textContent="Backup imported.";
-      }
+      const values=Array.isArray(data) ? data : data.checked;\n      const failedValues=Array.isArray(data) ? [] : (data.failed || []);\n      const validDate = x => typeof x==="string" && /^\\d{4}-\\d{2}-\\d{2}$/.test(x);\n      if (!Array.isArray(values) || !values.every(validDate) || !Array.isArray(failedValues) || !failedValues.every(validDate)) throw new Error("Invalid backup");\n      if (confirm("Importing will replace the checkmarks and failed days currently saved in this browser. Continue?")) {\n        checked=new Set(values); failed=new Set(failedValues); save(); render(); notice.textContent="Backup imported.";\n      }
     } catch { notice.textContent="That file doesn't look like a valid streak calendar backup."; }
     e.target.value="";
   });
